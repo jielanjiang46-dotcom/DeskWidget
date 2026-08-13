@@ -1,0 +1,2 @@
+"""DeskWidget application package."""
+
