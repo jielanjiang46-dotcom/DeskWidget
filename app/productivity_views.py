@@ -49,11 +49,11 @@ class CountdownPage(QWidget):
         super().__init__(); self.manager = manager
         layout = QVBoxLayout(self); layout.setContentsMargins(0, 8, 0, 0); layout.setSpacing(14)
         header = QHBoxLayout(); title = QLabel("倒数日"); title.setObjectName("pageTitle")
-        add = QPushButton("＋ 新建倒数日"); add.setObjectName("primary"); add.clicked.connect(lambda: manager.create_countdown_widget())
+        add = QPushButton("＋ 新建事件"); add.setObjectName("primary"); add.clicked.connect(lambda: manager.create_countdown_widget())
         header.addWidget(title); header.addStretch(); header.addWidget(add); layout.addLayout(header)
-        subtitle = QLabel("管理独立事件和目标时间，每个事件都可以显示为桌面组件")
+        subtitle = QLabel("统一管理倒数日和纪念日，每个事件都可以显示为桌面组件")
         subtitle.setObjectName("subtitle"); layout.addWidget(subtitle)
-        self.table = QTableWidget(0, 4); self.table.setHorizontalHeaderLabels(["事件", "剩余时间", "目标时间", "操作"])
+        self.table = QTableWidget(0, 5); self.table.setHorizontalHeaderLabels(["类型", "事件", "计时", "日期", "操作"])
         self.table.horizontalHeader().setStretchLastSection(True); self.table.verticalHeader().hide(); layout.addWidget(self.table)
         self._widget_ids = []
         self.timer = QTimer(self); self.timer.timeout.connect(self.refresh); self.timer.start(1000); self.refresh()
@@ -65,12 +65,13 @@ class CountdownPage(QWidget):
         if rebuild:
             self._widget_ids = ids; self.table.setRowCount(len(widgets))
         for row, widget in enumerate(widgets):
-            self.table.setItem(row, 0, QTableWidgetItem(widget.title_text)); self.table.setItem(row, 1, QTableWidgetItem(widget.value_label.text())); self.table.setItem(row, 2, QTableWidgetItem(widget.detail_label.text().split("·")[-1].strip()))
+            kind = "纪念日" if widget.mode == "anniversary" else "倒数日"
+            self.table.setItem(row, 0, QTableWidgetItem(kind)); self.table.setItem(row, 1, QTableWidgetItem(widget.title_text)); self.table.setItem(row, 2, QTableWidgetItem(widget.value_label.text())); self.table.setItem(row, 3, QTableWidgetItem(widget.detail_label.text().split("·")[-1].strip()))
             if rebuild:
                 controls = QWidget(); actions = QHBoxLayout(controls); actions.setContentsMargins(0, 2, 0, 2)
                 edit = QPushButton("编辑"); edit.clicked.connect(widget.edit)
                 show = QPushButton("显示到桌面"); show.clicked.connect(lambda _checked=False, value=widget: self._show(value))
-                actions.addWidget(edit); actions.addWidget(show); self.table.setCellWidget(row, 3, controls)
+                actions.addWidget(edit); actions.addWidget(show); self.table.setCellWidget(row, 4, controls)
 
     @staticmethod
     def _show(widget) -> None:

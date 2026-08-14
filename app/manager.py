@@ -201,15 +201,15 @@ class WidgetManager:
 
     def create_countdown_widget(
         self, title: str | None = None, target_at: str | None = None,
-        position: QPoint | None = None, always_on_top: bool = False,
+        mode: str = "countdown", position: QPoint | None = None, always_on_top: bool = False,
         size: tuple[int, int] = (280, 150),
     ) -> CountdownWidget | None:
         if title is None or target_at is None:
             dialog = CountdownDialog(self.main_window)
             if dialog.exec() != dialog.DialogCode.Accepted: return None
-            title, target_at = dialog.values()
+            title, target_at, mode = dialog.values()
             if not title: return None
-        widget = CountdownWidget(self, title, target_at, position, size, always_on_top)
+        widget = CountdownWidget(self, title, target_at, mode, position, size, always_on_top)
         if position is None: self._place_new_widget(widget)
         self.widgets.append(widget); widget.show(); self._apply_widget_effect(widget); self.main_window.refresh_status(); self.save_state()
         return widget
@@ -330,7 +330,7 @@ class WidgetManager:
         title, target = str(item.get("title", "倒数日")), str(item.get("target_at", ""))
         if not target: return None
         return self.create_countdown_widget(
-            title, target, restored_position(item),
+            title, target, str(item.get("mode", "countdown")), restored_position(item),
             bool(item.get("always_on_top", False)),
             (int(item.get("width", 280)), int(item.get("height", 150))),
         )
