@@ -189,6 +189,8 @@ class MainWindow(QMainWindow):
             PlanTaskRow { background: white; border: 1px solid #ECEEF2; border-radius: 9px; }
             QLabel#taskTitle { font-size: 13px; font-weight: 500; }
             QLabel#completedTask { color: #A1A7B0; text-decoration: line-through; }
+            QPushButton#taskEdit { min-width: 48px; min-height: 28px; border: none; background: transparent; color: #7D8490; padding: 0 8px; }
+            QPushButton#taskEdit:hover {{ background: {theme.accent_soft}; color: {theme.accent_text}; }}
             QLabel#due { color: #818997; font-size: 10px; }
             QLabel#overdue { color: #D86A52; font-size: 10px; font-weight: 600; }
             QFrame#toolCard { background: white; border: 1px solid #E7E9EF; border-radius: 9px; }

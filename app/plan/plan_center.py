@@ -24,6 +24,7 @@ from .schedule_view import ScheduleView
 class PlanTaskRow(QFrame):
     def __init__(self, center: "PlanCenter", plan) -> None:
         super().__init__()
+        self.center = center
         self.plan = plan
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 9, 12, 9)
@@ -43,10 +44,22 @@ class PlanTaskRow(QFrame):
             texts.addWidget(due)
         layout.addWidget(check, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(texts, 1)
+        edit = QPushButton("编辑")
+        edit.setObjectName("taskEdit")
+        edit.setToolTip("修改任务内容和截止时间")
+        edit.clicked.connect(lambda: center.edit_task(plan))
+        layout.addWidget(edit, 0, Qt.AlignmentFlag.AlignVCenter)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(
             lambda point: center.show_task_menu(plan, self.mapToGlobal(point))
         )
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.center.edit_task(self.plan)
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
 
 class PlanCenter(QWidget):
@@ -120,7 +133,7 @@ class PlanCenter(QWidget):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.schedule = ScheduleView(self.manager.plan_service)
+        self.schedule = ScheduleView(self.manager.plan_service, self.edit_task)
         layout.addWidget(self.schedule)
         return page
 

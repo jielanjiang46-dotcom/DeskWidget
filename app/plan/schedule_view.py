@@ -1,16 +1,37 @@
 import calendar
 from datetime import date, datetime, timedelta
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+
+
+class TaskLabel(QLabel):
+    """保留日历任务标签外观，同时提供清晰的点击编辑入口。"""
+
+    clicked = Signal()
+
+    def __init__(self, text: str, task, edit_task, parent=None) -> None:
+        super().__init__(text, parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(f"{task.title}\n点击编辑任务")
+        if edit_task is not None:
+            self.clicked.connect(lambda: edit_task(task))
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
 
 class ScheduleView(QWidget):
     """在周、月、年三个尺度内直接展示任务。"""
 
-    def __init__(self, service) -> None:
+    def __init__(self, service, edit_task=None) -> None:
         super().__init__()
         self.service = service
+        self.edit_task = edit_task
         self.mode = "month"
         self.anchor = date.today()
         root = QVBoxLayout(self)
@@ -145,7 +166,7 @@ class ScheduleView(QWidget):
             empty.setObjectName("weekEmpty")
             layout.addWidget(empty)
         for task in tasks[:3]:
-            label = QLabel(("✓ " if task.completed else "• ") + task.title)
+            label = self._task_label(task)
             label.setObjectName("weekTaskDone" if task.completed else "weekTask")
             label.setWordWrap(True)
             layout.addWidget(label)
@@ -172,9 +193,8 @@ class ScheduleView(QWidget):
         layout.addWidget(number, 0, Qt.AlignmentFlag.AlignLeft)
         tasks = [x for x in self.service.items if x.due_at and self._date(x.due_at) == day]
         for task in tasks[:2]:
-            label = QLabel(("✓ " if task.completed else "• ") + task.title)
+            label = self._task_label(task)
             label.setObjectName("monthTaskDone" if task.completed else "monthTask")
-            label.setToolTip(task.title)
             label.setWordWrap(False)
             layout.addWidget(label)
         if len(tasks) > 2:
@@ -205,12 +225,18 @@ class ScheduleView(QWidget):
         summary.setObjectName("yearSummary")
         layout.addWidget(summary)
         for task in sorted(tasks, key=lambda item: item.due_at or "9999")[:2]:
-            label = QLabel(("✓ " if task.completed else "• ") + task.title)
+            label = self._task_label(task)
             label.setObjectName("yearTaskDone" if task.completed else "yearTask")
-            label.setToolTip(task.title)
             layout.addWidget(label)
         layout.addStretch()
         return card
+
+    def _task_label(self, task) -> TaskLabel:
+        return TaskLabel(
+            ("✓ " if task.completed else "• ") + task.title,
+            task,
+            self.edit_task,
+        )
 
     def _shift_month(self, delta: int) -> date:
         index = self.anchor.year * 12 + self.anchor.month - 1 + delta
