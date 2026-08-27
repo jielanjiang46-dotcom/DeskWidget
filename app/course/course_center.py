@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from .course_dialog import CourseDialog
+
 
 class CourseCenter(QWidget):
     """Import and manage the recurring weekly course schedule."""
@@ -31,7 +33,10 @@ class CourseCenter(QWidget):
         import_button = QPushButton("导入课表")
         import_button.setObjectName("primary")
         import_button.clicked.connect(self.import_schedule)
+        add_button = QPushButton("新建课程")
+        add_button.clicked.connect(self.add_course)
         heading.addWidget(sample)
+        heading.addWidget(add_button)
         heading.addWidget(import_button)
         layout.addLayout(heading)
 
@@ -48,6 +53,10 @@ class CourseCenter(QWidget):
         self.table.verticalHeader().hide()
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.horizontalHeader().setSectionResizeMode(1, self.table.horizontalHeader().ResizeMode.Stretch)
+        self.table.cellDoubleClicked.connect(
+            lambda row, _column: self.edit_course(self._row_courses[row])
+            if 0 <= row < len(self._row_courses) else None
+        )
         layout.addWidget(self.table, 1)
         footer = QHBoxLayout()
         footer.addStretch()
@@ -56,7 +65,18 @@ class CourseCenter(QWidget):
         footer.addWidget(clear)
         layout.addLayout(footer)
         manager.course_service.subscribe(self.refresh)
+        self._row_courses = []
         self.refresh()
+
+    def add_course(self) -> None:
+        dialog = CourseDialog(self)
+        if dialog.exec() == dialog.DialogCode.Accepted:
+            self.manager.course_service.add(*dialog.values())
+
+    def edit_course(self, course) -> None:
+        dialog = CourseDialog(self, course)
+        if dialog.exec() == dialog.DialogCode.Accepted:
+            self.manager.course_service.update(course.id, *dialog.values())
 
     def import_schedule(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
@@ -106,6 +126,7 @@ class CourseCenter(QWidget):
             self.manager.course_service.items,
             key=lambda item: (item.weekday, item.start_time, item.name),
         )
+        self._row_courses = items
         self.summary.setText(f"共 {len(items)} 节课程")
         self.table.setRowCount(len(items))
         for row, course in enumerate(items):
@@ -119,13 +140,24 @@ class CourseCenter(QWidget):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
                 self.table.setItem(row, column, item)
+            actions = QWidget()
+            action_layout = QHBoxLayout(actions)
+            action_layout.setContentsMargins(0, 0, 0, 0)
+            action_layout.setSpacing(2)
+            edit = QPushButton("编辑")
+            edit.setObjectName("taskEdit")
+            edit.clicked.connect(
+                lambda _checked=False, value=course: self.edit_course(value)
+            )
             delete = QPushButton("删除")
             delete.setObjectName("taskEdit")
             delete.clicked.connect(
                 lambda _checked=False, item_id=course.id:
                 self.manager.course_service.delete(item_id)
             )
-            self.table.setCellWidget(row, 7, delete)
+            action_layout.addWidget(edit)
+            action_layout.addWidget(delete)
+            self.table.setCellWidget(row, 7, actions)
         self.table.resizeColumnsToContents()
 
     @staticmethod

@@ -46,6 +46,44 @@ class CourseService:
         self.items.clear()
         self._changed()
 
+    def add(
+        self, name: str, weekday: int, start_time: str, end_time: str,
+        location: str = "", teacher: str = "", start_date: str = "",
+        end_date: str = "",
+    ) -> CourseItem:
+        course = CourseItem.create(
+            name, weekday, start_time, end_time, location, teacher,
+            start_date, end_date,
+        )
+        self.items.append(course)
+        self._changed()
+        return course
+
+    def update(
+        self, item_id: str, name: str, weekday: int, start_time: str,
+        end_time: str, location: str = "", teacher: str = "",
+        start_date: str = "", end_date: str = "",
+    ) -> None:
+        for course in self.items:
+            if course.id != item_id:
+                continue
+            recurrence_changed = (
+                course.weekday != weekday or course.start_date != start_date or
+                course.end_date != end_date
+            )
+            course.name = name.strip()
+            course.weekday = weekday
+            course.start_time = start_time
+            course.end_time = end_time
+            course.location = location.strip()
+            course.teacher = teacher.strip()
+            course.start_date = start_date
+            course.end_date = end_date
+            if recurrence_changed:
+                course.dates = []
+            self._changed()
+            return
+
     def import_csv(self, path: Path) -> tuple[int, list[str]]:
         aliases = {
             "name": ("课程", "课程名", "课程名称", "name", "course"),
