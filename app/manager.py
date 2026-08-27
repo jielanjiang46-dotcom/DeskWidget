@@ -259,6 +259,43 @@ class WidgetManager:
             return
         self.plan_service.add(title, due, repeat_weekly)
 
+    def import_plans(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self.main_window, "导入日程", str(Path.home()),
+            "日程文件 (*.json *.ics);;DeskWidget JSON (*.json);;iCalendar (*.ics)",
+        )
+        if not filename:
+            return
+        try:
+            added, skipped = self.plan_service.import_file(Path(filename))
+        except (OSError, UnicodeError, ValueError) as error:
+            QMessageBox.warning(self.main_window, "导入失败", str(error))
+            return
+        QMessageBox.information(
+            self.main_window, "导入完成",
+            f"新增 {added} 项日程，跳过 {skipped} 项重复日程。\n原有日程未被覆盖。",
+        )
+
+    def export_plans(self) -> None:
+        filename, selected = QFileDialog.getSaveFileName(
+            self.main_window, "导出日程", str(Path.home() / "DeskWidget日程.json"),
+            "DeskWidget JSON (*.json);;iCalendar (*.ics)",
+        )
+        if not filename:
+            return
+        path = Path(filename)
+        expected = ".ics" if selected.startswith("iCalendar") else ".json"
+        if path.suffix.lower() != expected:
+            path = path.with_suffix(expected)
+        try:
+            count = self.plan_service.export_file(path)
+        except (OSError, UnicodeError, ValueError) as error:
+            QMessageBox.warning(self.main_window, "导出失败", str(error))
+            return
+        QMessageBox.information(
+            self.main_window, "导出完成", f"已导出 {count} 项日程到：\n{path}"
+        )
+
     def _place_new_widget(self, widget: ImageWidget) -> None:
         screen = QApplication.primaryScreen()
         if screen is None:

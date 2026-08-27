@@ -197,7 +197,8 @@ class ScheduleView(QWidget):
     """在周、月、年三个尺度内直接展示任务。"""
 
     def __init__(
-        self, service, course_service, edit_task=None, add_plan_at=None
+        self, service, course_service, edit_task=None, add_plan_at=None,
+        import_plans=None, export_plans=None,
     ) -> None:
         super().__init__()
         self.service = service
@@ -216,6 +217,14 @@ class ScheduleView(QWidget):
         self.course_toggle.setChecked(course_service.show_in_calendar)
         self.course_toggle.toggled.connect(course_service.set_show_in_calendar)
         header.addWidget(self.course_toggle)
+        if import_plans is not None:
+            import_button = QPushButton("导入日程")
+            import_button.clicked.connect(import_plans)
+            header.addWidget(import_button)
+        if export_plans is not None:
+            export_button = QPushButton("导出日程")
+            export_button.clicked.connect(export_plans)
+            header.addWidget(export_button)
         modes = QButtonGroup(self)
         for key, text in (("week", "周"), ("month", "月"), ("year", "年")):
             button = QPushButton(text)

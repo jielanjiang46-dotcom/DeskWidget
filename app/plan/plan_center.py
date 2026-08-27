@@ -138,7 +138,8 @@ class PlanCenter(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.schedule = ScheduleView(
             self.manager.plan_service, self.manager.course_service, self.edit_task,
-            self.manager.add_plan_at,
+            self.manager.add_plan_at, self.manager.import_plans,
+            self.manager.export_plans,
         )
         layout.addWidget(self.schedule)
         return page
