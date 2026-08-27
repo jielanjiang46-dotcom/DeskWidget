@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from datetime import date, datetime
 from pathlib import Path
 
@@ -58,11 +59,7 @@ class CourseService:
         }
         imported: list[CourseItem] = []
         errors: list[str] = []
-        raw = path.read_bytes()
-        try:
-            content = raw.decode("utf-8-sig")
-        except UnicodeDecodeError:
-            content = raw.decode("gb18030")
+        content = self._decode(path)
         with io.StringIO(content, newline="") as source:
             reader = csv.DictReader(source)
             if not reader.fieldnames:
@@ -99,6 +96,94 @@ class CourseService:
         if imported:
             self._changed()
         return len(imported), errors
+
+    def import_ics(self, path: Path) -> tuple[int, list[str]]:
+        content = self._decode(path)
+        # RFC 5545 folds long properties onto continuation lines.
+        unfolded = re.sub(r"\r?\n[ \t]", "", content)
+        groups: dict[tuple, set[str]] = {}
+        errors: list[str] = []
+        for index, block in enumerate(unfolded.split("BEGIN:VEVENT")[1:], 1):
+            event = block.split("END:VEVENT", 1)[0]
+            try:
+                name = self._ics_unescape(self._ics_value(event, "SUMMARY"))
+                start = self._ics_datetime(self._ics_value(event, "DTSTART"))
+                end = self._ics_datetime(self._ics_value(event, "DTEND"))
+                if not name or end <= start:
+                    raise ValueError("课程名称或时间无效")
+                location = self._ics_unescape(
+                    self._ics_value(event, "LOCATION", required=False)
+                )
+                description = self._ics_unescape(
+                    self._ics_value(event, "DESCRIPTION", required=False)
+                )
+                teacher_match = re.search(
+                    r"(?:Teacher|Instructor|Lecturer|教师|老师)\s*:\s*([^\n]+)",
+                    description, re.IGNORECASE,
+                )
+                teacher = teacher_match.group(1).strip() if teacher_match else ""
+                key = (
+                    name, start.weekday(), start.strftime("%H:%M"),
+                    end.strftime("%H:%M"), location, teacher,
+                )
+                groups.setdefault(key, set()).add(start.date().isoformat())
+            except ValueError as error:
+                errors.append(f"第 {index} 个日历事件：{error}")
+
+        imported: list[CourseItem] = []
+        for key, dates in groups.items():
+            name, weekday, start_time, end_time, location, teacher = key
+            ordered = sorted(dates)
+            course = CourseItem.create(
+                name, weekday, start_time, end_time, location, teacher,
+                ordered[0], ordered[-1],
+            )
+            course.dates = ordered
+            imported.append(course)
+        self.items.extend(imported)
+        if imported:
+            self._changed()
+        return len(imported), errors
+
+    def import_file(self, path: Path) -> tuple[int, list[str]]:
+        if path.suffix.lower() == ".ics":
+            return self.import_ics(path)
+        return self.import_csv(path)
+
+    @staticmethod
+    def _decode(path: Path) -> str:
+        raw = path.read_bytes()
+        try:
+            return raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return raw.decode("gb18030")
+
+    @staticmethod
+    def _ics_value(event: str, name: str, required: bool = True) -> str:
+        match = re.search(rf"(?m)^{re.escape(name)}(?:;[^:]*)?:(.*)$", event)
+        if match is not None:
+            return match.group(1).strip()
+        if required:
+            raise ValueError(f"缺少 {name} 字段")
+        return ""
+
+    @staticmethod
+    def _ics_datetime(value: str) -> datetime:
+        normalized = value.rstrip("Z")
+        for pattern in ("%Y%m%dT%H%M%S", "%Y%m%dT%H%M"):
+            try:
+                return datetime.strptime(normalized, pattern)
+            except ValueError:
+                continue
+        raise ValueError(f"无法识别日历时间“{value}”")
+
+    @staticmethod
+    def _ics_unescape(value: str) -> str:
+        return (
+            value.replace("\\n", "\n").replace("\\N", "\n")
+            .replace("\\,", ",").replace("\\;", ";")
+            .replace("\\\\", "\\")
+        )
 
     @staticmethod
     def _time(value: str) -> str:

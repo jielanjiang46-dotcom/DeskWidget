@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date
 from uuid import uuid4
 
@@ -14,6 +14,7 @@ class CourseItem:
     teacher: str = ""
     start_date: str = ""
     end_date: str = ""
+    dates: list[str] = field(default_factory=list)
 
     @classmethod
     def create(
@@ -34,11 +35,14 @@ class CourseItem:
             str(data.get("end_time", "")), str(data.get("location", "")),
             str(data.get("teacher", "")), str(data.get("start_date", "")),
             str(data.get("end_date", "")),
+            [str(value) for value in data.get("dates", []) if value],
         )
 
     def occurs_on(self, day: date) -> bool:
         if day.weekday() != self.weekday:
             return False
+        if self.dates:
+            return day.isoformat() in self.dates
         if self.start_date and day < date.fromisoformat(self.start_date):
             return False
         if self.end_date and day > date.fromisoformat(self.end_date):
