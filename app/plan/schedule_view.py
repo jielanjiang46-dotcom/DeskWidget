@@ -1,8 +1,150 @@
 import calendar
 from datetime import date, datetime, timedelta
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QButtonGroup, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtWidgets import (
+    QButtonGroup, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton,
+    QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+)
+
+
+class HourlyWeekCanvas(QWidget):
+    """Seven-day calendar laid out on an hourly vertical timeline."""
+
+    start_hour = 7
+    end_hour = 22
+    hour_height = 64
+    header_height = 52
+    time_width = 58
+
+    def __init__(self, plan_service, course_service) -> None:
+        super().__init__()
+        self.plan_service = plan_service
+        self.course_service = course_service
+        self.start = date.today()
+        self.setMinimumWidth(690)
+        self.setFixedHeight(
+            self.header_height + (self.end_hour - self.start_hour) * self.hour_height + 2
+        )
+
+    def set_week(self, start: date) -> None:
+        self.start = start
+        self.update()
+
+    def paintEvent(self, _event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#FFFFFF"))
+        day_width = (self.width() - self.time_width) / 7
+        weekdays = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+        today_column = (date.today() - self.start).days
+        if 0 <= today_column < 7:
+            painter.fillRect(
+                QRectF(
+                    self.time_width + today_column * day_width + 1, 1,
+                    day_width - 2, self.height() - 2,
+                ),
+                QColor("#F6F8FF"),
+            )
+
+        painter.setPen(QPen(QColor("#E6E9EF"), 1))
+        painter.drawLine(0, self.header_height, self.width(), self.header_height)
+        for column in range(8):
+            x = self.time_width + column * day_width
+            painter.drawLine(int(x), 0, int(x), self.height())
+        for hour in range(self.start_hour, self.end_hour + 1):
+            y = self.header_height + (hour - self.start_hour) * self.hour_height
+            painter.drawLine(self.time_width, y, self.width(), y)
+            painter.setPen(QColor("#9299A4"))
+            painter.setFont(QFont("Microsoft YaHei UI", 8))
+            painter.drawText(
+                QRectF(0, y - 11, self.time_width - 8, 22),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                f"{hour:02d}:00",
+            )
+            painter.setPen(QPen(QColor("#E6E9EF"), 1))
+
+        for column, weekday in enumerate(weekdays):
+            day = self.start + timedelta(days=column)
+            x = self.time_width + column * day_width
+            painter.setPen(QColor("#69717E"))
+            painter.setFont(QFont("Microsoft YaHei UI", 9, QFont.Weight.DemiBold))
+            painter.drawText(
+                QRectF(x, 4, day_width, 21), Qt.AlignmentFlag.AlignCenter, weekday
+            )
+            painter.setPen(QColor("#252A34"))
+            painter.setFont(QFont("Microsoft YaHei UI", 12, QFont.Weight.Bold))
+            painter.drawText(
+                QRectF(x, 23, day_width, 25), Qt.AlignmentFlag.AlignCenter,
+                f"{day.month}/{day.day}",
+            )
+            self._paint_day_events(painter, day, x, day_width)
+
+        now = datetime.now()
+        if self.start <= now.date() <= self.start + timedelta(days=6):
+            minute = now.hour * 60 + now.minute
+            if self.start_hour * 60 <= minute <= self.end_hour * 60:
+                column = (now.date() - self.start).days
+                x = self.time_width + column * day_width
+                y = self._minute_y(minute)
+                painter.setPen(QPen(QColor("#E75B52"), 2))
+                painter.drawLine(int(x), int(y), int(x + day_width), int(y))
+
+    def _paint_day_events(
+        self, painter: QPainter, day: date, x: float, day_width: float
+    ) -> None:
+        events: list[tuple[int, int, str, str, str]] = []
+        if self.course_service.show_in_calendar:
+            for course in self.course_service.courses_on(day):
+                start = self._minutes(course.start_time)
+                end = self._minutes(course.end_time)
+                detail = course.name
+                if course.location:
+                    detail += f"\n{course.location}"
+                events.append((start, end, detail, "#DCEAFF", "#285F9C"))
+        for task in self.plan_service.items:
+            if not task.due_at:
+                continue
+            try:
+                due = datetime.fromisoformat(task.due_at)
+            except ValueError:
+                continue
+            if due.date() == day:
+                minute = due.hour * 60 + due.minute
+                title = ("✓ " if task.completed else "• ") + task.title
+                events.append((minute, minute + 30, title, "#E8EAFE", "#4859C8"))
+
+        for start, end, text, background, foreground in sorted(events):
+            visible_start = max(start, self.start_hour * 60)
+            visible_end = min(end, self.end_hour * 60)
+            if visible_end <= visible_start:
+                continue
+            top = self._minute_y(visible_start) + 2
+            bottom = self._minute_y(visible_end) - 2
+            rect = QRectF(x + 4, top, day_width - 8, max(24, bottom - top))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(background))
+            painter.drawRoundedRect(rect, 5, 5)
+            painter.setPen(QColor(foreground))
+            painter.setFont(QFont("Microsoft YaHei UI", 8, QFont.Weight.DemiBold))
+            painter.drawText(
+                rect.adjusted(6, 4, -4, -3),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop |
+                Qt.TextFlag.TextWordWrap,
+                text,
+            )
+
+    def _minute_y(self, minute: int) -> float:
+        return self.header_height + (
+            minute - self.start_hour * 60
+        ) * self.hour_height / 60
+
+    @staticmethod
+    def _minutes(value: str) -> int:
+        hour, minute = (int(part) for part in value.split(":", 1))
+        return hour * 60 + minute
 
 
 class TaskLabel(QLabel):
@@ -67,6 +209,13 @@ class ScheduleView(QWidget):
         self.table.setShowGrid(True)
         self.table.setWordWrap(True)
         root.addWidget(self.table)
+        self.week_canvas = HourlyWeekCanvas(service, course_service)
+        self.week_scroll = QScrollArea()
+        self.week_scroll.setWidgetResizable(True)
+        self.week_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.week_scroll.setWidget(self.week_canvas)
+        self.week_scroll.hide()
+        root.addWidget(self.week_scroll)
         self.course_service.subscribe(self._course_changed)
         self.refresh()
 
@@ -97,9 +246,14 @@ class ScheduleView(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
+        is_week = self.mode == "week"
+        self.table.setVisible(not is_week)
+        self.week_scroll.setVisible(is_week)
+        if is_week:
+            self._week()
+            return
         self._clear_table()
-        if self.mode == "week": self._week()
-        elif self.mode == "month": self._month()
+        if self.mode == "month": self._month()
         else: self._year()
 
     def _clear_table(self) -> None:
@@ -110,14 +264,7 @@ class ScheduleView(QWidget):
     def _week(self) -> None:
         start = self.anchor - timedelta(days=self.anchor.weekday())
         self.period.setText(f"{start:%Y年%m月%d日} — {(start + timedelta(days=6)):%m月%d日}")
-        self.table.setRowCount(1); self.table.setColumnCount(7)
-        self.table.horizontalHeader().hide()
-        for col in range(7):
-            day = start + timedelta(days=col)
-            self.table.setCellWidget(0, col, self._week_card(day))
-        self.table.horizontalHeader().setSectionResizeMode(self.table.horizontalHeader().ResizeMode.Stretch)
-        self.table.verticalHeader().setDefaultSectionSize(230)
-        self.table.setMaximumHeight(235)
+        self.week_canvas.set_week(start)
 
     def _month(self) -> None:
         self.period.setText(f"{self.anchor:%Y年%m月}")
