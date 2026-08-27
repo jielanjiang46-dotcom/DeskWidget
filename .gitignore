@@ -45,6 +45,7 @@ desktop.ini
 settings.json
 widgets.json
 plans.json
+courses.json
 assets/*
 !assets/.gitkeep
 

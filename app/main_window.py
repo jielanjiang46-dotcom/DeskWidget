@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from .plan.plan_center import PlanCenter
+from .course.course_center import CourseCenter
 from .productivity_views import CountdownPage, PomodoroPage
 from .settings_window import SettingsWindow
 
@@ -37,6 +38,8 @@ class MainWindow(QMainWindow):
         self.plan_center = PlanCenter(manager)
         self.pages.addWidget(self.widget_page)
         self.pages.addWidget(self.plan_center)
+        self.course_center = CourseCenter(manager)
+        self.pages.addWidget(self.course_center)
         self.pomodoro_page = PomodoroPage(manager)
         self.countdown_page = CountdownPage(manager)
         self.pages.addWidget(self.pomodoro_page)
@@ -55,7 +58,7 @@ class MainWindow(QMainWindow):
         header.addSpacing(14)
         self.tabs = QButtonGroup(self)
         self.tabs.setExclusive(True)
-        for index, text in enumerate(("组件", "任务", "日历", "番茄钟", "倒数日")):
+        for index, text in enumerate(("组件", "任务", "日历", "课表", "番茄钟", "倒数日")):
             button = QPushButton(text)
             button.setObjectName("topTab")
             button.setCheckable(True)
@@ -88,9 +91,12 @@ class MainWindow(QMainWindow):
                 self.plan_center.show_calendar()
         elif page == 3:
             self.pages.setCurrentIndex(2)
+            self.course_center.refresh()
+        elif page == 4:
+            self.pages.setCurrentIndex(3)
             self.pomodoro_page.refresh()
         else:
-            self.pages.setCurrentIndex(3)
+            self.pages.setCurrentIndex(4)
             self.countdown_page.refresh()
 
     def _build_widget_page(self) -> QWidget:
@@ -117,6 +123,7 @@ class MainWindow(QMainWindow):
         cards.addWidget(self._card("今日计划", "在桌面查看任务和剩余时间", "添加计划", self.manager.create_plan_widget), 0, 2)
         cards.addWidget(self._card("番茄钟", "可绑定任务，隐藏后继续准确计时", "添加番茄钟", self.manager.create_pomodoro_widget), 1, 0)
         cards.addWidget(self._card("倒数日与纪念日", "记录未来期待，也纪念已经发生的重要日子", "新建事件", self.manager.create_countdown_widget), 1, 1)
+        cards.addWidget(self._card("一周日程", "同时查看本周课程与带日期的任务", "添加周日程", self.manager.create_week_agenda_widget), 1, 2)
         layout.addLayout(cards)
         layout.addStretch()
         footer = QHBoxLayout()
@@ -205,6 +212,7 @@ class MainWindow(QMainWindow):
             QLabel#weekDay { color: #7F8794; font-size: 11px; font-weight: 600; }
             QLabel#weekNumber { color: #252A34; font-size: 22px; font-weight: 700; }
             QLabel#weekTask {{ background: {theme.accent_soft}; color: {theme.accent_text}; border-radius: 6px; padding: 5px 7px; font-size: 11px; }}
+            QLabel#weekCourse { background: #E8F3FF; color: #356A9A; border-radius: 6px; padding: 5px 7px; font-size: 11px; }
             QLabel#weekTaskDone { background: #F0F1F3; color: #9AA0AA; border-radius: 6px; padding: 5px 7px; text-decoration: line-through; }
             QLabel#weekEmpty { color: #B0B5BE; font-size: 10px; }
             QFrame#monthCard, QFrame#monthCardToday, QFrame#monthCardMuted { background: white; border: none; }
@@ -213,6 +221,7 @@ class MainWindow(QMainWindow):
             QLabel#monthNumber { color: #343A45; font-size: 13px; font-weight: 700; }
             QLabel#monthNumberMuted { color: #C1C5CC; font-size: 13px; }
             QLabel#monthTask {{ background: {theme.accent_soft}; color: {theme.accent_text}; border-radius: 5px; padding: 3px 5px; font-size: 10px; }}
+            QLabel#monthCourse { background: #E8F3FF; color: #356A9A; border-radius: 5px; padding: 3px 5px; font-size: 10px; }
             QLabel#monthTaskDone { background: #F0F1F3; color: #A0A5AD; border-radius: 5px; padding: 3px 5px; text-decoration: line-through; font-size: 10px; }
             QLabel#monthMore { color: #9198A4; font-size: 9px; }
             QFrame#yearCard, QFrame#yearCardCurrent { background: white; border: none; }
@@ -221,6 +230,7 @@ class MainWindow(QMainWindow):
             QLabel#yearCount {{ background: {theme.accent_soft}; color: {theme.accent_text}; border-radius: 7px; padding: 3px 7px; font-size: 10px; }}
             QLabel#yearSummary { color: #9299A4; font-size: 10px; }
             QLabel#yearTask {{ color: {theme.accent_text}; font-size: 10px; font-weight: 600; }}
+            QLabel#yearCourse { color: #356A9A; font-size: 10px; font-weight: 600; }
             QLabel#yearTaskDone { color: #A0A5AD; font-size: 10px; text-decoration: line-through; }
         """
         for token, value in {
@@ -241,6 +251,7 @@ class MainWindow(QMainWindow):
     def show_panel(self) -> None:
         self.refresh_status()
         self.plan_center.refresh()
+        self.course_center.refresh()
         self.show()
         self.raise_()
         self.activateWindow()

@@ -2,7 +2,7 @@ import calendar
 from datetime import date, datetime, timedelta
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QButtonGroup, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 
 class TaskLabel(QLabel):
@@ -28,9 +28,10 @@ class TaskLabel(QLabel):
 class ScheduleView(QWidget):
     """在周、月、年三个尺度内直接展示任务。"""
 
-    def __init__(self, service, edit_task=None) -> None:
+    def __init__(self, service, course_service, edit_task=None) -> None:
         super().__init__()
         self.service = service
+        self.course_service = course_service
         self.edit_task = edit_task
         self.mode = "month"
         self.anchor = date.today()
@@ -41,6 +42,10 @@ class ScheduleView(QWidget):
         self.period.setObjectName("pageTitle")
         header.addWidget(self.period)
         header.addStretch()
+        self.course_toggle = QCheckBox("显示课表")
+        self.course_toggle.setChecked(course_service.show_in_calendar)
+        self.course_toggle.toggled.connect(course_service.set_show_in_calendar)
+        header.addWidget(self.course_toggle)
         modes = QButtonGroup(self)
         for key, text in (("week", "周"), ("month", "月"), ("year", "年")):
             button = QPushButton(text)
@@ -62,6 +67,13 @@ class ScheduleView(QWidget):
         self.table.setShowGrid(True)
         self.table.setWordWrap(True)
         root.addWidget(self.table)
+        self.course_service.subscribe(self._course_changed)
+        self.refresh()
+
+    def _course_changed(self) -> None:
+        self.course_toggle.blockSignals(True)
+        self.course_toggle.setChecked(self.course_service.show_in_calendar)
+        self.course_toggle.blockSignals(False)
         self.refresh()
 
     def set_mode(self, mode: str) -> None:
@@ -130,10 +142,17 @@ class ScheduleView(QWidget):
         self.table.setHorizontalHeaderLabels([])
         for month in range(1, 13):
             tasks = [x for x in self.service.items if x.due_at and self._date(x.due_at).year == self.anchor.year and self._date(x.due_at).month == month]
+            courses = []
+            if self.course_service.show_in_calendar:
+                days = calendar.monthrange(self.anchor.year, month)[1]
+                for number in range(1, days + 1):
+                    courses.extend(
+                        self.course_service.courses_on(date(self.anchor.year, month, number))
+                    )
             self.table.setCellWidget(
                 (month - 1) // 4,
                 (month - 1) % 4,
-                self._year_card(month, tasks),
+                self._year_card(month, tasks, courses),
             )
         self.table.horizontalHeader().setSectionResizeMode(self.table.horizontalHeader().ResizeMode.Stretch)
         self.table.verticalHeader().setDefaultSectionSize(145)
@@ -161,17 +180,25 @@ class ScheduleView(QWidget):
         layout.addWidget(weekday)
         layout.addWidget(number)
         tasks = [x for x in self.service.items if x.due_at and self._date(x.due_at) == day]
-        if not tasks:
+        courses = self._courses(day)
+        if not tasks and not courses:
             empty = QLabel("暂无安排")
             empty.setObjectName("weekEmpty")
             layout.addWidget(empty)
+        for course in courses[:3]:
+            label = QLabel(f"{course.start_time} {course.name}")
+            label.setObjectName("weekCourse")
+            label.setWordWrap(True)
+            label.setToolTip(self._course_tooltip(course))
+            layout.addWidget(label)
         for task in tasks[:3]:
             label = self._task_label(task)
             label.setObjectName("weekTaskDone" if task.completed else "weekTask")
             label.setWordWrap(True)
             layout.addWidget(label)
-        if len(tasks) > 3:
-            more = QLabel(f"还有 {len(tasks) - 3} 项")
+        hidden = max(0, len(courses) - 3) + max(0, len(tasks) - 3)
+        if hidden:
+            more = QLabel(f"还有 {hidden} 项")
             more.setObjectName("weekEmpty")
             layout.addWidget(more)
         layout.addStretch()
@@ -192,19 +219,27 @@ class ScheduleView(QWidget):
         number.setObjectName("monthNumberMuted" if not in_month else "monthNumber")
         layout.addWidget(number, 0, Qt.AlignmentFlag.AlignLeft)
         tasks = [x for x in self.service.items if x.due_at and self._date(x.due_at) == day]
+        courses = self._courses(day)
+        for course in courses[:1]:
+            label = QLabel(f"{course.start_time} {course.name}")
+            label.setObjectName("monthCourse")
+            label.setWordWrap(False)
+            label.setToolTip(self._course_tooltip(course))
+            layout.addWidget(label)
         for task in tasks[:2]:
             label = self._task_label(task)
             label.setObjectName("monthTaskDone" if task.completed else "monthTask")
             label.setWordWrap(False)
             layout.addWidget(label)
-        if len(tasks) > 2:
-            more = QLabel(f"+{len(tasks) - 2} 项")
+        hidden = max(0, len(courses) - 1) + max(0, len(tasks) - 2)
+        if hidden:
+            more = QLabel(f"+{hidden} 项")
             more.setObjectName("monthMore")
             layout.addWidget(more)
         layout.addStretch()
         return card
 
-    def _year_card(self, month: int, tasks) -> QWidget:
+    def _year_card(self, month: int, tasks, courses) -> QWidget:
         card = QFrame()
         is_current = self.anchor.year == date.today().year and month == date.today().month
         card.setObjectName("yearCardCurrent" if is_current else "yearCard")
@@ -214,17 +249,30 @@ class ScheduleView(QWidget):
         heading = QHBoxLayout()
         name = QLabel(f"{month}月")
         name.setObjectName("yearMonth")
-        count = QLabel(f"{len(tasks)} 项")
+        total = len(tasks) + len(courses)
+        count = QLabel(f"{total} 项")
         count.setObjectName("yearCount")
         heading.addWidget(name)
         heading.addStretch()
         heading.addWidget(count)
         layout.addLayout(heading)
         remaining = sum(not task.completed for task in tasks)
-        summary = QLabel(f"{remaining} 项待完成" if tasks else "暂无安排")
+        details = []
+        if remaining:
+            details.append(f"{remaining} 项任务")
+        if courses:
+            details.append(f"{len(courses)} 节课")
+        summary = QLabel(" · ".join(details) if details else "暂无安排")
         summary.setObjectName("yearSummary")
         layout.addWidget(summary)
-        for task in sorted(tasks, key=lambda item: item.due_at or "9999")[:2]:
+        shown = 0
+        if courses:
+            course = courses[0]
+            label = QLabel(f"{course.name} 等课程")
+            label.setObjectName("yearCourse")
+            layout.addWidget(label)
+            shown = 1
+        for task in sorted(tasks, key=lambda item: item.due_at or "9999")[:2 - shown]:
             label = self._task_label(task)
             label.setObjectName("yearTaskDone" if task.completed else "yearTask")
             layout.addWidget(label)
@@ -241,6 +289,20 @@ class ScheduleView(QWidget):
     def _shift_month(self, delta: int) -> date:
         index = self.anchor.year * 12 + self.anchor.month - 1 + delta
         return date(index // 12, index % 12 + 1, 1)
+
+    def _courses(self, day: date):
+        if not self.course_service.show_in_calendar:
+            return []
+        return self.course_service.courses_on(day)
+
+    @staticmethod
+    def _course_tooltip(course) -> str:
+        details = [course.name, f"{course.start_time}–{course.end_time}"]
+        if course.location:
+            details.append(course.location)
+        if course.teacher:
+            details.append(course.teacher)
+        return "\n".join(details)
 
     @staticmethod
     def _date(value: str) -> date:

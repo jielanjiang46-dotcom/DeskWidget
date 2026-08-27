@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .constants import DEFAULT_IMAGE, IMAGE_FILTER
+from .course.service import CourseService
 from .countdown_widget import CountdownDialog, CountdownWidget
 from .image_widget import ImageWidget
 from .main_window import MainWindow
@@ -27,6 +28,7 @@ from .state import load_state, save_state
 from .theme import ThemeManager
 from .widget_base import restored_position
 from .window_effects import apply_window_effect
+from .week_agenda_widget import WeekAgendaWidget
 
 
 class WidgetManager:
@@ -39,6 +41,7 @@ class WidgetManager:
         self.tray_menu: QMenu | None = None
         self._tray_hint_shown = False
         self.plan_service = PlanService()
+        self.course_service = CourseService()
         self.theme = ThemeManager()
         self.main_window = MainWindow(self)
         self.theme.subscribe(self._theme_changed)
@@ -48,6 +51,7 @@ class WidgetManager:
         self.registry.register("plan", self._restore_plan)
         self.registry.register("pomodoro", self._restore_pomodoro)
         self.registry.register("countdown", self._restore_countdown)
+        self.registry.register("week_agenda", self._restore_week_agenda)
 
     def start(self) -> None:
         self._create_tray_icon()
@@ -214,6 +218,20 @@ class WidgetManager:
         self.widgets.append(widget); widget.show(); self._apply_widget_effect(widget); self.main_window.refresh_status(); self.save_state()
         return widget
 
+    def create_week_agenda_widget(
+        self, position: QPoint | None = None,
+        size: tuple[int, int] = (760, 310), always_on_top: bool = False,
+    ) -> WeekAgendaWidget:
+        widget = WeekAgendaWidget(self, position, size, always_on_top)
+        if position is None:
+            self._place_new_widget(widget)
+        self.widgets.append(widget)
+        widget.show()
+        self._apply_widget_effect(widget)
+        self.main_window.refresh_status()
+        self.save_state()
+        return widget
+
     def add_plan_item(self, parent: QWidget | None = None) -> None:
         dialog = TaskDialog(parent or self.main_window)
         if dialog.exec() != TaskDialog.DialogCode.Accepted:
@@ -266,8 +284,8 @@ class WidgetManager:
     def delete_widget(self, widget: QWidget) -> None:
         answer = QMessageBox.question(
             widget,
-            "删除图片组件",
-            "确定删除这个组件吗？\n关联的原始文件不会被删除。",
+            "删除桌面组件",
+            "确定删除这个组件吗？\n关联的课程、任务或原始文件不会被删除。",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -333,6 +351,13 @@ class WidgetManager:
             title, target, str(item.get("mode", "countdown")), restored_position(item),
             bool(item.get("always_on_top", False)),
             (int(item.get("width", 280)), int(item.get("height", 150))),
+        )
+
+    def _restore_week_agenda(self, item: dict) -> WeekAgendaWidget:
+        return self.create_week_agenda_widget(
+            restored_position(item),
+            (int(item.get("width", 760)), int(item.get("height", 310))),
+            bool(item.get("always_on_top", False)),
         )
 
     def quit_all(self) -> None:
