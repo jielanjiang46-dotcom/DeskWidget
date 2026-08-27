@@ -18,10 +18,13 @@ class HourlyWeekCanvas(QWidget):
     header_height = 52
     time_width = 58
 
-    def __init__(self, plan_service, course_service) -> None:
+    def __init__(
+        self, plan_service, course_service, respect_course_toggle: bool = True
+    ) -> None:
         super().__init__()
         self.plan_service = plan_service
         self.course_service = course_service
+        self.respect_course_toggle = respect_course_toggle
         self.start = date.today()
         self.setMinimumWidth(690)
         self.setFixedHeight(
@@ -96,7 +99,7 @@ class HourlyWeekCanvas(QWidget):
         self, painter: QPainter, day: date, x: float, day_width: float
     ) -> None:
         events: list[tuple[int, int, str, str, str]] = []
-        if self.course_service.show_in_calendar:
+        if not self.respect_course_toggle or self.course_service.show_in_calendar:
             for course in self.course_service.courses_on(day):
                 start = self._minutes(course.start_time)
                 end = self._minutes(course.end_time)

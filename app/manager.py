@@ -220,7 +220,7 @@ class WidgetManager:
 
     def create_week_agenda_widget(
         self, position: QPoint | None = None,
-        size: tuple[int, int] = (760, 310), always_on_top: bool = False,
+        size: tuple[int, int] = (800, 460), always_on_top: bool = False,
     ) -> WeekAgendaWidget:
         widget = WeekAgendaWidget(self, position, size, always_on_top)
         if position is None:
@@ -356,7 +356,7 @@ class WidgetManager:
     def _restore_week_agenda(self, item: dict) -> WeekAgendaWidget:
         return self.create_week_agenda_widget(
             restored_position(item),
-            (int(item.get("width", 760)), int(item.get("height", 310))),
+            (int(item.get("width", 800)), int(item.get("height", 460))),
             bool(item.get("always_on_top", False)),
         )
 

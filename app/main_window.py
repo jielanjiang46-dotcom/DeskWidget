@@ -123,7 +123,7 @@ class MainWindow(QMainWindow):
         cards.addWidget(self._card("今日计划", "在桌面查看任务和剩余时间", "添加计划", self.manager.create_plan_widget), 0, 2)
         cards.addWidget(self._card("番茄钟", "可绑定任务，隐藏后继续准确计时", "添加番茄钟", self.manager.create_pomodoro_widget), 1, 0)
         cards.addWidget(self._card("倒数日与纪念日", "记录未来期待，也纪念已经发生的重要日子", "新建事件", self.manager.create_countdown_widget), 1, 1)
-        cards.addWidget(self._card("一周日程", "同时查看本周课程与带日期的任务", "添加周日程", self.manager.create_week_agenda_widget), 1, 2)
+        cards.addWidget(self._card("一周日程", "按小时查看本周课程与带日期的任务", "添加周日程", self.manager.create_week_agenda_widget), 1, 2)
         layout.addLayout(cards)
         layout.addStretch()
         footer = QHBoxLayout()
