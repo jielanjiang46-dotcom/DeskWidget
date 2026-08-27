@@ -39,8 +39,11 @@ class PlanTaskRow(QFrame):
         title.setObjectName("completedTask" if plan.completed else "taskTitle")
         texts.addWidget(title)
         if plan.due_at:
-            due = QLabel(center.format_due(plan.due_at))
-            due.setObjectName("overdue" if center.is_overdue(plan.due_at) else "due")
+            due = QLabel(center.format_plan_due(plan))
+            due.setObjectName(
+                "due" if plan.repeat_weekly else
+                ("overdue" if center.is_overdue(plan.due_at) else "due")
+            )
             texts.addWidget(due)
         layout.addWidget(check, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(texts, 1)
@@ -134,7 +137,8 @@ class PlanCenter(QWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
         self.schedule = ScheduleView(
-            self.manager.plan_service, self.manager.course_service, self.edit_task
+            self.manager.plan_service, self.manager.course_service, self.edit_task,
+            self.manager.add_plan_at,
         )
         layout.addWidget(self.schedule)
         return page
@@ -160,14 +164,22 @@ class PlanCenter(QWidget):
         self.refresh()
 
     def filtered_items(self):
-        now = datetime.now()
         end_today = datetime.combine(date.today(), time.max)
         end_week = end_today + timedelta(days=7)
-        items = self.manager.plan_service.items
+        service = self.manager.plan_service
+        items = service.items
         if self.filter_name == "today":
-            return [x for x in items if not x.completed and x.due_at and self._dt(x.due_at) <= end_today]
+            return [
+                x for x in items if not x.completed and
+                (service.occurs_on(x, date.today()) or
+                 (not x.repeat_weekly and x.due_at and self._dt(x.due_at) <= end_today))
+            ]
         if self.filter_name == "upcoming":
-            return [x for x in items if not x.completed and x.due_at and now < self._dt(x.due_at) <= end_week]
+            return [
+                x for x in items if not x.completed and
+                service.occurs_between(x, date.today(), end_week.date()) and
+                not service.occurs_on(x, date.today())
+            ]
         if self.filter_name == "completed":
             return [x for x in items if x.completed]
         return list(items)
@@ -197,8 +209,8 @@ class PlanCenter(QWidget):
     def edit_task(self, plan) -> None:
         dialog = TaskDialog(self, plan)
         if dialog.exec() == dialog.DialogCode.Accepted:
-            title, due = dialog.values()
-            self.manager.plan_service.update(plan.id, title, due)
+            title, due, repeat_weekly = dialog.values()
+            self.manager.plan_service.update(plan.id, title, due, repeat_weekly)
 
     @staticmethod
     def _dt(value: str) -> datetime:
@@ -216,3 +228,10 @@ class PlanCenter(QWidget):
             return ""
         prefix = "已逾期 · " if due < datetime.now() else ""
         return prefix + due.strftime("%m月%d日 %H:%M")
+
+    def format_plan_due(self, plan) -> str:
+        if not plan.repeat_weekly:
+            return self.format_due(plan.due_at)
+        due = self._dt(plan.due_at)
+        weekdays = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        return f"每周{weekdays[due.weekday()][1:]} {due:%H:%M}"

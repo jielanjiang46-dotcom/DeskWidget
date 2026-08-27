@@ -1,8 +1,8 @@
 import calendar
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -17,6 +17,7 @@ class HourlyWeekCanvas(QWidget):
     hour_height = 64
     header_height = 52
     time_width = 58
+    slot_clicked = Signal(object)
 
     def __init__(
         self, plan_service, course_service, respect_course_toggle: bool = True
@@ -26,6 +27,8 @@ class HourlyWeekCanvas(QWidget):
         self.course_service = course_service
         self.respect_course_toggle = respect_course_toggle
         self.start = date.today()
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setToolTip("点击时间格新建计划")
         self.setMinimumWidth(690)
         self.setFixedHeight(
             self.header_height + (self.end_hour - self.start_hour) * self.hour_height + 2
@@ -107,17 +110,16 @@ class HourlyWeekCanvas(QWidget):
                 if course.location:
                     detail += f"\n{course.location}"
                 events.append((start, end, detail, "#DCEAFF", "#285F9C"))
-        for task in self.plan_service.items:
-            if not task.due_at:
-                continue
+        for task in self.plan_service.items_on(day):
             try:
                 due = datetime.fromisoformat(task.due_at)
             except ValueError:
                 continue
-            if due.date() == day:
-                minute = due.hour * 60 + due.minute
-                title = ("✓ " if task.completed else "• ") + task.title
-                events.append((minute, minute + 30, title, "#E8EAFE", "#4859C8"))
+            minute = due.hour * 60 + due.minute
+            title = ("✓ " if task.completed else "• ") + task.title
+            if task.repeat_weekly:
+                title += "  ↻"
+            events.append((minute, minute + 30, title, "#E8EAFE", "#4859C8"))
 
         for start, end, text, background, foreground in sorted(events):
             visible_start = max(start, self.start_hour * 60)
@@ -143,6 +145,27 @@ class HourlyWeekCanvas(QWidget):
         return self.header_height + (
             minute - self.start_hour * 60
         ) * self.hour_height / 60
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        point = event.position()
+        if (
+            event.button() != Qt.MouseButton.LeftButton or
+            point.x() < self.time_width or point.y() < self.header_height
+        ):
+            super().mouseReleaseEvent(event)
+            return
+        day_width = (self.width() - self.time_width) / 7
+        column = max(0, min(6, int((point.x() - self.time_width) / day_width)))
+        raw_minutes = self.start_hour * 60 + round(
+            (point.y() - self.header_height) * 60 / self.hour_height / 30
+        ) * 30
+        raw_minutes = max(
+            self.start_hour * 60, min(self.end_hour * 60 - 30, raw_minutes)
+        )
+        day = self.start + timedelta(days=column)
+        due = datetime.combine(day, time(raw_minutes // 60, raw_minutes % 60))
+        self.slot_clicked.emit(due)
+        event.accept()
 
     @staticmethod
     def _minutes(value: str) -> int:
@@ -173,7 +196,9 @@ class TaskLabel(QLabel):
 class ScheduleView(QWidget):
     """在周、月、年三个尺度内直接展示任务。"""
 
-    def __init__(self, service, course_service, edit_task=None) -> None:
+    def __init__(
+        self, service, course_service, edit_task=None, add_plan_at=None
+    ) -> None:
         super().__init__()
         self.service = service
         self.course_service = course_service
@@ -213,6 +238,8 @@ class ScheduleView(QWidget):
         self.table.setWordWrap(True)
         root.addWidget(self.table)
         self.week_canvas = HourlyWeekCanvas(service, course_service)
+        if add_plan_at is not None:
+            self.week_canvas.slot_clicked.connect(add_plan_at)
         self.week_scroll = QScrollArea()
         self.week_scroll.setWidgetResizable(True)
         self.week_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -291,10 +318,14 @@ class ScheduleView(QWidget):
         self.table.setMaximumHeight(16777215)
         self.table.setHorizontalHeaderLabels([])
         for month in range(1, 13):
-            tasks = [x for x in self.service.items if x.due_at and self._date(x.due_at).year == self.anchor.year and self._date(x.due_at).month == month]
+            days = calendar.monthrange(self.anchor.year, month)[1]
+            tasks = []
+            for number in range(1, days + 1):
+                tasks.extend(
+                    self.service.items_on(date(self.anchor.year, month, number))
+                )
             courses = []
             if self.course_service.show_in_calendar:
-                days = calendar.monthrange(self.anchor.year, month)[1]
                 for number in range(1, days + 1):
                     courses.extend(
                         self.course_service.courses_on(date(self.anchor.year, month, number))
@@ -308,7 +339,7 @@ class ScheduleView(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(145)
 
     def _day_item(self, day: date, include_date: bool) -> QTableWidgetItem:
-        tasks = [x for x in self.service.items if x.due_at and self._date(x.due_at) == day]
+        tasks = self.service.items_on(day)
         lines = [str(day.day)] if include_date else []
         lines.extend(("✓ " if x.completed else "• ") + x.title for x in tasks[:4])
         if len(tasks) > 4: lines.append(f"还有 {len(tasks)-4} 项…")
@@ -329,7 +360,7 @@ class ScheduleView(QWidget):
         number.setObjectName("weekNumber")
         layout.addWidget(weekday)
         layout.addWidget(number)
-        tasks = [x for x in self.service.items if x.due_at and self._date(x.due_at) == day]
+        tasks = self.service.items_on(day)
         courses = self._courses(day)
         if not tasks and not courses:
             empty = QLabel("暂无安排")
@@ -368,7 +399,7 @@ class ScheduleView(QWidget):
         number = QLabel(str(day.day))
         number.setObjectName("monthNumberMuted" if not in_month else "monthNumber")
         layout.addWidget(number, 0, Qt.AlignmentFlag.AlignLeft)
-        tasks = [x for x in self.service.items if x.due_at and self._date(x.due_at) == day]
+        tasks = self.service.items_on(day)
         courses = self._courses(day)
         for course in courses[:1]:
             label = QLabel(f"{course.start_time} {course.name}")

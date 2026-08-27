@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QPoint
@@ -240,11 +241,23 @@ class WidgetManager:
         dialog = TaskDialog(parent or self.main_window)
         if dialog.exec() != TaskDialog.DialogCode.Accepted:
             return
-        title, due_at = dialog.values()
+        title, due_at, repeat_weekly = dialog.values()
         if not title:
             QMessageBox.information(dialog, "任务为空", "请输入任务内容。")
             return
-        self.plan_service.add(title, due_at)
+        self.plan_service.add(title, due_at, repeat_weekly)
+
+    def add_plan_at(
+        self, due_at: datetime, parent: QWidget | None = None
+    ) -> None:
+        dialog = TaskDialog(parent or self.main_window, initial_due=due_at)
+        if dialog.exec() != TaskDialog.DialogCode.Accepted:
+            return
+        title, due, repeat_weekly = dialog.values()
+        if not title:
+            QMessageBox.information(dialog, "任务为空", "请输入任务内容。")
+            return
+        self.plan_service.add(title, due, repeat_weekly)
 
     def _place_new_widget(self, widget: ImageWidget) -> None:
         screen = QApplication.primaryScreen()

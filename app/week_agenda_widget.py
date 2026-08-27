@@ -76,6 +76,9 @@ class WeekAgendaWidget(DesktopWidget, QFrame):
             manager.plan_service, manager.course_service,
             respect_course_toggle=False,
         )
+        self.week_canvas.slot_clicked.connect(
+            lambda due: manager.add_plan_at(due, self)
+        )
         self.week_scroll = QScrollArea()
         self.week_scroll.setWidgetResizable(True)
         self.week_scroll.setFrameShape(QFrame.Shape.NoFrame)

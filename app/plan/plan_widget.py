@@ -31,7 +31,7 @@ class TaskRow(QFrame):
         title.setObjectName("doneTitle" if plan.completed else "taskTitle")
         title.setWordWrap(True)
         text.addWidget(title)
-        due_text, due_kind = widget._due_label(plan.due_at)
+        due_text, due_kind = widget._plan_due_label(plan)
         if due_text:
             due = QLabel(due_text)
             due.setObjectName(due_kind)
@@ -155,6 +155,16 @@ class PlanWidget(DesktopWidget, QFrame):
                 return f"剩余 {int(seconds // 86400)} 天", "dueNormal"
         except ValueError:
             return "", "dueNormal"
+
+    def _plan_due_label(self, plan) -> tuple[str, str]:
+        if not plan.repeat_weekly:
+            return self._due_label(plan.due_at)
+        try:
+            due = datetime.fromisoformat(plan.due_at)
+        except (TypeError, ValueError):
+            return "", "dueNormal"
+        weekdays = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        return f"每{weekdays[due.weekday()]} {due:%H:%M}", "dueNormal"
 
     def _task_menu(self, item_id: str, pos: QPoint) -> None:
         menu = QMenu(self)
