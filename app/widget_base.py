@@ -15,6 +15,9 @@ class DesktopWidget:
     def init_desktop_widget(self, manager: "WidgetManager") -> None:
         self.manager = manager
         self._allow_close = False
+        # Desktop components stay visible when the main panel is hidden, but
+        # should not create separate entries in the Windows taskbar.
+        self.setWindowFlag(Qt.WindowType.Tool, True)
         self._full_context_callback = None
         self._resize_edges = Qt.Edge(0)
         self._resize_start_global = QPoint()
