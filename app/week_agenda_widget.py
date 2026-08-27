@@ -3,7 +3,10 @@ from typing import Any
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QAction, QMouseEvent
-from PySide6.QtWidgets import QFrame, QLabel, QMenu, QScrollArea, QSizeGrip, QVBoxLayout
+from PySide6.QtWidgets import (
+    QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QScrollArea, QSizeGrip,
+    QVBoxLayout,
+)
 
 from .plan.schedule_view import HourlyWeekCanvas
 from .theme import rgba
@@ -16,10 +19,15 @@ class WeekAgendaWidget(DesktopWidget, QFrame):
     def __init__(
         self, manager, position: QPoint | None = None,
         size: tuple[int, int] = (800, 460), always_on_top: bool = False,
+        anchor: str | None = None,
     ) -> None:
         QFrame.__init__(self)
         self.init_desktop_widget(manager)
         self._drag_offset: QPoint | None = None
+        try:
+            self.anchor = date.fromisoformat(anchor) if anchor else date.today()
+        except ValueError:
+            self.anchor = date.today()
         self.setWindowTitle("一周日程")
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, always_on_top)
@@ -31,7 +39,18 @@ class WeekAgendaWidget(DesktopWidget, QFrame):
         self.root.setSpacing(9)
         self.heading = QLabel()
         self.heading.setObjectName("agendaHeading")
-        self.root.addWidget(self.heading)
+        header = QHBoxLayout()
+        header.setSpacing(6)
+        header.addWidget(self.heading)
+        header.addStretch()
+        for text, callback in (
+            ("‹", self.previous_week), ("今天", self.today), ("›", self.next_week)
+        ):
+            button = QPushButton(text)
+            button.setObjectName("agendaNav")
+            button.clicked.connect(callback)
+            header.addWidget(button)
+        self.root.addLayout(header)
         self.week_canvas = HourlyWeekCanvas(
             manager.plan_service, manager.course_service,
             respect_course_toggle=False,
@@ -51,11 +70,28 @@ class WeekAgendaWidget(DesktopWidget, QFrame):
         self.refresh()
 
     def refresh(self) -> None:
-        start = date.today() - timedelta(days=date.today().weekday())
+        start = self.anchor - timedelta(days=self.anchor.weekday())
+        current_start = date.today() - timedelta(days=date.today().weekday())
+        prefix = "本周日程" if start == current_start else "一周日程"
         self.heading.setText(
-            f"本周日程  ·  {start:%m月%d日}—{(start + timedelta(days=6)):%m月%d日}"
+            f"{prefix}  ·  {start:%m月%d日}—{(start + timedelta(days=6)):%m月%d日}"
         )
         self.week_canvas.set_week(start)
+
+    def previous_week(self) -> None:
+        self.anchor -= timedelta(days=7)
+        self.refresh()
+        self.manager.save_state()
+
+    def next_week(self) -> None:
+        self.anchor += timedelta(days=7)
+        self.refresh()
+        self.manager.save_state()
+
+    def today(self) -> None:
+        self.anchor = date.today()
+        self.refresh()
+        self.manager.save_state()
 
     def apply_theme(self) -> None:
         theme = self.manager.theme.current
@@ -64,6 +100,8 @@ class WeekAgendaWidget(DesktopWidget, QFrame):
             WeekAgendaWidget {{ background: {background}; border: 1px solid {theme.accent}; border-radius: 14px; color: #252A34; font-family: "Microsoft YaHei UI"; }}
             QLabel {{ background: transparent; }}
             QLabel#agendaHeading {{ color: {theme.accent_text}; font-size: 15px; font-weight: 700; }}
+            QPushButton#agendaNav {{ min-width: 34px; min-height: 25px; max-height: 25px; padding: 0 7px; background: white; color: #59616D; border: 1px solid #DDE1E8; border-radius: 6px; }}
+            QPushButton#agendaNav:hover {{ border-color: {theme.accent}; color: {theme.accent_text}; }}
             QScrollArea {{ background: white; border: none; border-radius: 8px; }}
         """)
 
@@ -95,5 +133,6 @@ class WeekAgendaWidget(DesktopWidget, QFrame):
 
     def state(self) -> dict[str, Any]:
         return {
-            **self.common_state(), "width": self.width(), "height": self.height()
+            **self.common_state(), "width": self.width(), "height": self.height(),
+            "anchor": self.anchor.isoformat(),
         }
